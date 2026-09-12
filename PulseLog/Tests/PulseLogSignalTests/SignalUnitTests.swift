@@ -215,3 +215,101 @@ final class SignalUnitTests: XCTestCase {
         }
     }
 }
+
+/// Tests for the capture state machine. These matter as much as the DSP: a
+/// session that counts down while the finger is off the lens produces a
+/// confident reading from nothing.
+final class MeasurementSessionTests: XCTestCase {
+
+    private func fingertipFrame(at t: Double, bpm: Double) -> FrameSample {
+        let phase = 2 * .pi * (bpm / 60.0) * t
+        let red = 0.85 + 0.006 * (sin(phase) + 0.55 * sin(2 * phase + 1.1))
+        return FrameSample(timestamp: t, red: red, green: 0.11, blue: 0.08)
+    }
+
+    private func emptyFrame(at t: Double) -> FrameSample {
+        FrameSample(timestamp: t, red: 0.15, green: 0.14, blue: 0.16)
+    }
+
+    func testCompletesAndRecoversRateFromAGoodCapture() {
+        let session = MeasurementSession(duration: 30.0)
+        var final: PPGResult?
+        // 32 s of frames: 1 s settling plus the 30 s record.
+        for i in 0..<Int(32.0 * 30.0) {
+            let phase = session.ingest(fingertipFrame(at: Double(i) / 30.0, bpm: 72))
+            if case .finished(let result) = phase { final = result; break }
+        }
+        guard let result = final, let bpm = result.bpm else {
+            return XCTFail("session did not finish")
+        }
+        XCTAssertEqual(bpm, 72, accuracy: 3.0)
+        XCTAssertTrue(result.isReportable)
+    }
+
+    func testCountdownDoesNotAdvanceWithoutContact() {
+        let session = MeasurementSession(duration: 30.0)
+        for i in 0..<300 {
+            session.ingest(emptyFrame(at: Double(i) / 30.0))
+        }
+        guard case .awaitingContact = session.phase else {
+            return XCTFail("session advanced with no finger present: \(session.phase)")
+        }
+        XCTAssertEqual(session.elapsed, 0)
+    }
+
+    func testLosingContactDiscardsThePartialRecord() {
+        let session = MeasurementSession(duration: 30.0)
+        for i in 0..<450 {   // 15 s of good contact
+            session.ingest(fingertipFrame(at: Double(i) / 30.0, bpm: 72))
+        }
+        XCTAssertGreaterThan(session.elapsed, 10.0)
+
+        // Finger lifts.
+        session.ingest(emptyFrame(at: 15.0))
+        XCTAssertEqual(session.elapsed, 0, "a partial record survived a contact break")
+        guard case .awaitingContact = session.phase else {
+            return XCTFail("expected to await contact again")
+        }
+    }
+
+    func testSettlingPeriodIsExcluded() {
+        let session = MeasurementSession(duration: 30.0)
+        // Half a second of contact: inside the settling window, so nothing counts.
+        for i in 0..<15 {
+            session.ingest(fingertipFrame(at: Double(i) / 30.0, bpm: 72))
+        }
+        XCTAssertEqual(session.elapsed, 0)
+    }
+
+    func testUnreadableCaptureAsksForARetakeRatherThanReporting() {
+        let session = MeasurementSession(duration: 20.0)
+        var generator = SystemRandomNumberGenerator()
+        var phase: MeasurementSession.Phase = .awaitingContact(.noFinger)
+        for i in 0..<Int(24.0 * 30.0) {
+            // Contact is good, but there is no pulse in the trace.
+            let sample = FrameSample(timestamp: Double(i) / 30.0,
+                                     red: 0.85 + Double.random(in: -0.004...0.004, using: &generator),
+                                     green: 0.11, blue: 0.08)
+            phase = session.ingest(sample)
+            if case .needsRetake = phase { break }
+            if case .finished = phase { break }
+        }
+        if case .finished(let result) = phase {
+            XCTFail("noise was reported as \(result.bpm ?? -1) BPM at confidence \(result.confidence)")
+        }
+    }
+
+    func testProvisionalRateAppearsOnlyAfterEnoughSignal() {
+        let session = MeasurementSession(duration: 30.0)
+        var sawProvisionalBefore = false
+        for i in 0..<Int(8.0 * 30.0) {   // through the provisional threshold
+            if case .measuring(_, let provisional) = session.ingest(
+                fingertipFrame(at: Double(i) / 30.0, bpm: 72)
+            ), provisional != nil, session.elapsed < PPGConstants.provisionalAfterSeconds {
+                sawProvisionalBefore = true
+            }
+        }
+        XCTAssertFalse(sawProvisionalBefore,
+                       "a provisional rate was shown before enough signal had accumulated")
+    }
+}

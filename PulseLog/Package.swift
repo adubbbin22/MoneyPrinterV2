@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v13)],
     products: [
         .library(name: "PulseLogSignal", targets: ["PulseLogSignal"]),
+        .library(name: "PulseLogCore", targets: ["PulseLogCore"]),
     ],
     targets: [
         // Deliberately free of Apple-framework dependencies: the estimator is
@@ -17,5 +18,10 @@ let package = Package(
             dependencies: ["PulseLogSignal"],
             resources: [.copy("Resources/ppg_vectors.json")]
         ),
+        // Domain logic -- classification, norms, correlation -- kept out of the
+        // app target for the same reason as the signal code: it is the part
+        // worth testing, and a simulator should not be required to do so.
+        .target(name: "PulseLogCore"),
+        .testTarget(name: "PulseLogCoreTests", dependencies: ["PulseLogCore"]),
     ]
 )
