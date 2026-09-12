@@ -24,7 +24,9 @@ def main():
            "constants": {
                "minBPM": ppg.MIN_BPM, "maxBPM": ppg.MAX_BPM,
                "subharmonicPowerFloor": ppg.SUBHARMONIC_POWER_FLOOR,
-               "confidenceThreshold": ppg.CONFIDENCE_THRESHOLD}}
+               "confidenceThreshold": ppg.CONFIDENCE_THRESHOLD,
+               "rrDispersionTolerance": ppg.RR_DISPERSION_TOLERANCE,
+               "sparsePeriodSamples": ppg.SPARSE_PERIOD_SAMPLES}}
 
     # --- biquad coefficients -------------------------------------------------
     out["biquad"] = []
@@ -62,7 +64,9 @@ def main():
     for peaks, fs in (([0, 30, 61, 89, 120, 150], 30.0),
                       ([0, 25, 50, 75, 100, 125, 150], 30.0),
                       ([0, 30, 65, 92, 130], 30.0)):
-        out["rmssd"].append({"peaks": peaks, "fs": fs, "rmssdMs": r(ppg.rmssd_ms(peaks, fs))})
+        out["rmssd"].append({"peaks": peaks, "fs": fs,
+                             "rmssdMs": r(ppg.rmssd_ms(peaks, fs)),
+                             "dispersion": r(ppg.rr_dispersion(peaks, fs))})
 
     # --- end-to-end pipeline --------------------------------------------------
     out["pipeline"] = []
@@ -71,7 +75,8 @@ def main():
              ("weak_perfusion_88", 88, {"ac_dc_ratio": 0.0025}),
              ("wander_110", 110, {"breathing_amplitude_ratio": 8.0}),
              ("garbage_no_finger", 70, {"ac_dc_ratio": 0.00005,
-                                        "sensor_noise_dc_ratio": 0.004})]
+                                        "sensor_noise_dc_ratio": 0.004}),
+             ("high_rate_variable_195", 195, {"hrv_sd_ms": 60.0})]
     for name, bpm, kw in cases:
         ts, sig = synthetic.generate(bpm=bpm, seed=11, duration_s=20.0, **kw)
         res = ppg.analyze(ts, sig)
@@ -81,7 +86,8 @@ def main():
             "expected": {"bpm": r(res["bpm"]), "confidence": r(res["confidence"]),
                          "fs": r(res["fs"]), "rmssdMs": r(res["rmssd_ms"]),
                          "isReportable": bool(res["is_reportable"]),
-                         "beatCount": res["beat_count"]},
+                         "beatCount": res["beat_count"],
+                         "rrDispersion": r(res.get("rr_dispersion"))},
         })
 
     path = "../Tests/PulseLogSignalTests/Resources/ppg_vectors.json"

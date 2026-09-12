@@ -34,6 +34,16 @@ HIGH_HZ = MAX_BPM / 60.0  # 3.50 Hz
 # Empirically calibrated: see the comment in analyze().
 SUBHARMONIC_POWER_FLOOR = 0.10
 
+# RR-interval coefficient of variation above which confidence is reduced.
+# A steady pulse sits well below this; sustained values above it mean the
+# single-dominant-period model does not fit the data it is being applied to.
+RR_DISPERSION_TOLERANCE = 0.12
+
+# Samples per beat below which sub-sample refinement is doing the heavy
+# lifting and interval scatter starts to bias the estimate. At 30 fps this is
+# roughly 128 BPM and above.
+SPARSE_PERIOD_SAMPLES = 14.0
+
 # Minimum confidence for a reading to be shown to the user. Calibrated over 864
 # runs spanning nine scenarios (see calibrate_confidence.py): at 0.40 the count
 # of accepted readings in error by more than 10 BPM drops from 24 to zero, and
@@ -336,6 +346,26 @@ def detect_peaks(filtered, fs, expected_bpm):
     return peaks
 
 
+def rr_dispersion(peaks, fs):
+    """Coefficient of variation of the RR intervals.
+
+    Measures how well the "one dominant period" assumption actually fits. A
+    steady pulse gives a few percent; a poorly-tracked or genuinely erratic one
+    gives far more. This is the evidence that the estimate rests on a shaky
+    premise, independent of how tall the autocorrelation peak is.
+    """
+    if len(peaks) < 4:
+        return None
+    rr = np.diff(np.asarray(peaks, dtype=np.float64)) / fs * 1000.0
+    rr = rr[(rr >= 250.0) & (rr <= 2000.0)]
+    if rr.size < 3:
+        return None
+    mean = rr.mean()
+    if mean <= 0:
+        return None
+    return float(rr.std(ddof=1) / mean)
+
+
 def rmssd_ms(peaks, fs):
     """Root mean square of successive RR-interval differences, in ms."""
     if len(peaks) < 3:
@@ -410,13 +440,38 @@ def analyze(timestamps, values):
     else:
         agreement = 0.0
 
+    peaks = detect_peaks(filtered, fs, bpm)
+    hrv = rmssd_ms(peaks, fs)
+
     confidence = float(np.clip(
         0.55 * max(0.0, ac_strength) + 0.25 * agreement + 0.20 * min(1.0, fft_purity * 8.0),
         0.0, 1.0,
     ))
 
-    peaks = detect_peaks(filtered, fs, bpm)
-    hrv = rmssd_ms(peaks, fs)
+    # Penalise estimates whose own beat intervals contradict the single-period
+    # model they rest on. Measured failure mode: at 185-210 BPM with large
+    # beat-to-beat variability the period is short enough (300 ms at 200 BPM)
+    # that the variability is a fifth of it, the autocorrelation peak smears,
+    # and refinement drifts toward longer lags -- producing estimates biased
+    # low by 10-14 BPM that the other confidence terms rate as fine.
+    #
+    # A steady pulse holds RR dispersion to a few percent, so a penalty above
+    # RR_DISPERSION_TOLERANCE targets exactly those cases.
+    # The penalty applies only where the mechanism does. Fragility comes from
+    # having few samples per beat: at 30 fps and 200 BPM a period spans just 9
+    # samples, so sub-sample refinement carries the estimate and interval
+    # scatter throws it off. At 60 BPM the same dispersion spreads over 30
+    # samples and is simply ordinary heart-rate variability, which must not be
+    # punished -- doing so rejected half of all weak-perfusion readings for no
+    # accuracy gain.
+    dispersion = rr_dispersion(peaks, fs)
+    samples_per_period = fs * 60.0 / bpm
+    if (dispersion is not None
+            and dispersion > RR_DISPERSION_TOLERANCE
+            and samples_per_period < SPARSE_PERIOD_SAMPLES):
+        excess = (dispersion - RR_DISPERSION_TOLERANCE) / RR_DISPERSION_TOLERANCE
+        sparsity = (SPARSE_PERIOD_SAMPLES - samples_per_period) / SPARSE_PERIOD_SAMPLES
+        confidence *= float(max(0.0, 1.0 - 0.9 * min(1.0, excess) * min(1.0, sparsity * 3.0)))
 
     return {
         "bpm": float(bpm),
@@ -427,6 +482,7 @@ def analyze(timestamps, values):
         "fft_bpm": fft_bpm,
         "autocorr_strength": float(ac_strength),
         "beat_count": len(peaks),
+        "rr_dispersion": dispersion,
         "octave_resolved": octave_resolved,
         "is_reportable": confidence >= CONFIDENCE_THRESHOLD,
     }

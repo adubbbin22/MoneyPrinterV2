@@ -7,6 +7,8 @@ public struct PPGResult: Equatable {
     public let rmssdMs: Double?
     public let sampleRate: Double
     public let beatCount: Int
+    /// Coefficient of variation of the detected RR intervals, when measurable.
+    public let rrDispersion: Double?
     /// True when the two estimators disagreed by an octave and the winner was
     /// decided on spectral evidence rather than native agreement.
     public let octaveResolved: Bool
@@ -20,7 +22,8 @@ public struct PPGResult: Equatable {
     }
 
     static let unusable = PPGResult(bpm: nil, confidence: 0, rmssdMs: nil,
-                                    sampleRate: 0, beatCount: 0, octaveResolved: false)
+                                    sampleRate: 0, beatCount: 0, rrDispersion: nil,
+                                    octaveResolved: false)
 }
 
 public enum PPGAnalyzer {
@@ -81,16 +84,43 @@ public enum PPGAnalyzer {
             }
         }
 
-        let strength = max(0.0, autocorrelation?.strength ?? 0.0)
-        let purity = spectral?.purity ?? 0.0
-        let confidence = min(1.0, max(0.0,
-            0.55 * strength + 0.25 * agreement + 0.20 * min(1.0, purity * 8.0)))
-
         let peaks = PeakDetector.detect(filtered, fs: fs, expectedBPM: bpm)
         let rmssd = HRV.rmssd(peaks: peaks, fs: fs)
+        let dispersion = HRV.dispersion(peaks: peaks, fs: fs)
+
+        let strength = max(0.0, autocorrelation?.strength ?? 0.0)
+        let purity = spectral?.purity ?? 0.0
+        var confidence = min(1.0, max(0.0,
+            0.55 * strength + 0.25 * agreement + 0.20 * min(1.0, purity * 8.0)))
+
+        // Penalise estimates whose own beat intervals contradict the
+        // single-period model they rest on.
+        //
+        // Measured failure mode: at 185-210 BPM with large beat-to-beat
+        // variability the period is short enough (300 ms at 200 BPM) that the
+        // variability is a fifth of it, the autocorrelation peak smears, and
+        // refinement drifts toward longer lags -- producing estimates biased
+        // low that the other confidence terms rate as perfectly fine.
+        //
+        // The penalty is conditioned on samples-per-beat because that is where
+        // the mechanism lives. Applying it at every rate rejected half of all
+        // weak-perfusion readings for no accuracy gain: at 60 BPM the same
+        // dispersion spreads over 30 samples and is just ordinary heart-rate
+        // variability.
+        let samplesPerPeriod = fs * 60.0 / bpm
+        if let dispersion,
+           dispersion > PPGConstants.rrDispersionTolerance,
+           samplesPerPeriod < PPGConstants.sparsePeriodSamples {
+            let excess = (dispersion - PPGConstants.rrDispersionTolerance)
+                / PPGConstants.rrDispersionTolerance
+            let sparsity = (PPGConstants.sparsePeriodSamples - samplesPerPeriod)
+                / PPGConstants.sparsePeriodSamples
+            confidence *= max(0.0, 1.0 - 0.9 * min(1.0, excess) * min(1.0, sparsity * 3.0))
+        }
 
         return PPGResult(bpm: bpm, confidence: confidence, rmssdMs: rmssd,
                          sampleRate: fs, beatCount: peaks.count,
+                         rrDispersion: dispersion,
                          octaveResolved: octaveResolved)
     }
 }

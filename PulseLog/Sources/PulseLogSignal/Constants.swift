@@ -29,6 +29,16 @@ public enum PPGConstants {
     /// 0.45 keeps a margin while still accepting ~83% of attempts.
     public static let confidenceThreshold: Double = 0.45
 
+    /// RR-interval coefficient of variation above which confidence is reduced.
+    /// A steady pulse sits well below this; sustained values above it mean the
+    /// single-dominant-period model does not fit the data it is applied to.
+    public static let rrDispersionTolerance: Double = 0.12
+
+    /// Samples per beat below which sub-sample refinement is carrying the
+    /// estimate and interval scatter starts to bias it. At 30 fps this is
+    /// roughly 128 BPM and above.
+    public static let sparsePeriodSamples: Double = 14.0
+
     /// Window for the moving-average detrend that removes the DC pedestal.
     public static let detrendWindowSeconds: Double = 1.0
 

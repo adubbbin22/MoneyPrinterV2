@@ -48,16 +48,23 @@ Accuracy over 30 s windows at 30 fps, 128 runs per scenario:
 The last two scenarios are why the confidence gate exists. Pooling all 864
 runs and filtering by confidence:
 
-| threshold | accepted | MAE | worst | errors >10 BPM |
+| threshold | accepted | MAE | worst relative error | errors >10% |
 |---|---|---|---|---|
-| 0.30 | 88.7% | 2.49 | 110.82 | 24 |
-| **0.40** | 84.3% | 0.74 | 6.14 | **0** |
-| 0.45 (shipped) | 83.2% | 0.73 | 5.36 | **0** |
+| 0.30 | 86.0% | 2.50 | 104.7% | 24 |
+| **0.40** | 80.8% | 0.69 | 3.6% | **0** |
+| 0.45 (shipped) | 80.0% | 0.69 | 3.6% | **0** |
 
-Above the shipped threshold no accepted reading is off by more than about 5
-BPM. Below it the app asks for a retake instead of showing a number.
+The criterion is relative rather than absolute error, because a 12 BPM miss is
+6% of a true rate of 200 and 20% of a true rate of 60; treating those as
+equivalent misstates both. The cliff between 0.30 and 0.40 is stark: the worst
+accepted reading goes from 105% wrong to 3.6% wrong.
 
-## Two findings worth keeping
+Checked again across ten scenarios and 1600 runs, the shipped gate accepts
+81.3% of attempts, and among those **no reading is off by more than 10% of the
+true rate** — the worst is 6.05%. Signals with no pulse in them are accepted
+0% of the time.
+
+## Findings worth keeping
 
 **Octave errors are the dominant failure mode.** The dicrotic notch puts so
 much energy in the second harmonic that the autocorrelation peak at 2T can
@@ -72,3 +79,21 @@ rule is that a harmonic cannot exist without its fundamental: prefer the lower
 frequency, and reject it only when it carries almost no energy. The separation
 is wide enough to be safe — genuine fundamentals held P(low)/P(high) ≥ 0.442,
 spurious sub-harmonics ≤ 0.012, against a threshold of 0.10.
+
+**Confidence has to account for the model not fitting.** At 185–210 BPM with
+large beat-to-beat variability, a period spans only about nine samples at
+30 fps. Sub-sample refinement then carries the estimate, interval scatter
+biases it toward longer lags, and the result is 10–14 BPM low while every other
+confidence term rates it as fine. A penalty on RR-interval dispersion fixes
+this, but only when conditioned on samples-per-beat: applying it at all rates
+rejected half of every weak-perfusion capture for no accuracy gain, because at
+60 BPM the same dispersion is just ordinary heart-rate variability spread over
+thirty samples.
+
+**RR dispersion is not an irregular-rhythm detector, and must never be shown as
+one.** It was tempting to surface it that way. Measured across the corpus,
+weak-perfusion captures produce *higher* dispersion (median 0.19) than
+genuinely high heart-rate variability does (0.10), because noisy peak detection
+and an erratic rhythm are indistinguishable at this level. Shipping it as an
+irregularity warning would mostly have told people with cold fingers that their
+heartbeat was irregular.

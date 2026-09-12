@@ -88,9 +88,10 @@ Full results in `reference/README.md`.
 | 15 s window | 0.91 | 2.53 | 4.33 | 96.9% |
 
 Adverse conditions do degrade badly, which is what the confidence gate exists
-for. Pooled across 864 runs and nine scenarios, gating at 0.45 accepts 83% of
-attempts, and among those accepted **no reading is off by more than about 5
-BPM** — against 24 gross errors if the gate is lowered to 0.30.
+for. Pooled across 1600 runs and ten scenarios, gating at 0.45 accepts 81.3% of
+attempts, and among those accepted **no reading is off by more than 10% of the
+true rate** — the worst is 6.05%. Lower the gate to 0.30 and the worst accepted
+reading is 105% wrong. Signals containing no pulse are accepted 0% of the time.
 
 **These figures are from synthetic signals, not from people.** Before shipping,
 the pipeline must be validated against a reference device — a chest strap or

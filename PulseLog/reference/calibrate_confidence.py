@@ -49,12 +49,17 @@ def main():
     total = len(rows)
     conf = np.array([r[3] for r in rows])
     err = np.array([abs(r[2] - r[1]) if r[2] is not None else 999.0 for r in rows])
+    # Relative error is the criterion that matters. A 12 BPM miss is 6% at a
+    # true rate of 200 and 20% at 60; an absolute threshold treats those as
+    # equivalent when they are not remotely comparable.
+    rel = np.array([abs(r[2] - r[1]) / r[1] * 100 if r[2] is not None else 999.0
+                    for r in rows])
 
     print("=" * 92)
     print(f"Confidence calibration over {total} runs across {len(SCENARIOS)} scenarios")
     print("=" * 92)
     print(f"{'thresh':>7}{'accepted':>10}{'accept%':>9}{'MAE':>8}{'p95':>8}{'max':>9}"
-          f"{'<=3bpm%':>9}{'>10bpm':>8}")
+          f"{'<=3bpm%':>9}{'maxrel':>8}{'>10%':>6}")
     print("-" * 92)
 
     best = None
@@ -65,20 +70,23 @@ def main():
             print(f"{t:7.2f}{0:10d}     -- all rejected --")
             continue
         e = err[sel]
+        r = rel[sel]
         mae, p95, mx = e.mean(), np.percentile(e, 95), e.max()
         w3 = (e <= 3.0).mean() * 100
-        bad = int((e > 10.0).sum())
-        print(f"{t:7.2f}{n:10d}{n/total*100:8.1f}%{mae:8.2f}{p95:8.2f}{mx:9.2f}{w3:8.1f}%{bad:8d}")
-        # Production criterion: no accepted reading off by more than 10 BPM,
-        # while still accepting a usable majority of attempts.
+        bad = int((r > 10.0).sum())
+        print(f"{t:7.2f}{n:10d}{n/total*100:8.1f}%{mae:8.2f}{p95:8.2f}{mx:9.2f}{w3:8.1f}%"
+              f"{r.max():7.1f}%{bad:6d}")
+        # Production criterion: no accepted reading off by more than 10% of the
+        # true rate, while still accepting a usable majority of attempts.
         if bad == 0 and best is None and n / total >= 0.50:
-            best = (t, n / total * 100, mae, mx)
+            best = (t, n / total * 100, mae, r.max())
 
     print("-" * 92)
     if best:
         print(f"\nRECOMMENDED THRESHOLD: {best[0]:.2f}")
-        print(f"  accepts {best[1]:.1f}% of attempts | MAE {best[2]:.2f} BPM | worst {best[3]:.2f} BPM")
-        print("  zero accepted readings off by more than 10 BPM")
+        print(f"  accepts {best[1]:.1f}% of attempts | MAE {best[2]:.2f} BPM "
+              f"| worst relative error {best[3]:.2f}%")
+        print("  zero accepted readings off by more than 10% of the true rate")
     else:
         print("\nNo threshold satisfies the criterion; estimator needs more work.")
     return 0 if best else 1

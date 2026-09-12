@@ -30,6 +30,11 @@ enum DoctorReport {
         }
     }
 
+    /// Marked `@MainActor` because it rasterises SwiftUI views through
+    /// `ImageRenderer`, and because `UIGraphicsPDFRenderer` expects to run on
+    /// the main thread. Callers reach it from a `.task`, which is already
+    /// main-actor isolated.
+    @MainActor
     static func render(heartRates: [HeartRateReading],
                        bloodPressures: [BloodPressureReading],
                        from startDate: Date, to endDate: Date,
@@ -236,7 +241,6 @@ enum DoctorReport {
 
     /// Rasterise the same chart the user sees in the app, rather than
     /// redrawing an approximation of it in Core Graphics.
-    @MainActor
     private static func chartImage(heartRates: [HeartRateReading],
                                    bloodPressures: [BloodPressureReading],
                                    size: CGSize) -> UIImage? {

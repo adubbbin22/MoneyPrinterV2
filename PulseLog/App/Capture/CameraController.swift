@@ -34,8 +34,10 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
-    /// Emitted for every usable frame, on the main actor.
-    var onSample: ((FrameSample) -> Void)?
+    /// Emitted for every usable frame. Annotated `@MainActor` so callers can
+    /// touch main-actor state from it without the compiler objecting; the
+    /// delegate already hops to the main actor before invoking it.
+    var onSample: (@MainActor (FrameSample) -> Void)?
 
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
@@ -174,7 +176,9 @@ final class CameraController: NSObject, ObservableObject {
 
     private func setTorch(on: Bool) {
         guard let camera = device, camera.hasTorch else { return }
-        try? camera.lockForConfiguration()
+        // Unlocking a device that was never locked is an error, so the lock
+        // has to succeed before the defer is armed.
+        guard (try? camera.lockForConfiguration()) != nil else { return }
         defer { camera.unlockForConfiguration() }
         if on {
             try? camera.setTorchModeOn(level: 0.3)

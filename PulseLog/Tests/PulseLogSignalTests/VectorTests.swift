@@ -15,6 +15,7 @@ final class VectorTests: XCTestCase {
     struct Vectors: Decodable {
         struct Constants: Decodable {
             let minBPM, maxBPM, subharmonicPowerFloor, confidenceThreshold: Double
+            let rrDispersionTolerance, sparsePeriodSamples: Double
         }
         struct BiquadCase: Decodable {
             let kind: String, fs: Double, cutoffHz: Double
@@ -31,12 +32,13 @@ final class VectorTests: XCTestCase {
             let values: [Double], index: Int, refined: Double
         }
         struct RMSSDCase: Decodable {
-            let peaks: [Int], fs: Double, rmssdMs: Double?
+            let peaks: [Int], fs: Double, rmssdMs: Double?, dispersion: Double?
         }
         struct PipelineCase: Decodable {
             struct Expected: Decodable {
                 let bpm: Double?, confidence: Double, fs: Double
                 let rmssdMs: Double?, isReportable: Bool, beatCount: Int
+                let rrDispersion: Double?
             }
             let name: String, trueBPM: Double
             let timestamps, values: [Double]
@@ -84,6 +86,8 @@ final class VectorTests: XCTestCase {
         XCTAssertEqual(PPGConstants.maxBPM, c.maxBPM)
         XCTAssertEqual(PPGConstants.subharmonicPowerFloor, c.subharmonicPowerFloor)
         XCTAssertEqual(PPGConstants.confidenceThreshold, c.confidenceThreshold)
+        XCTAssertEqual(PPGConstants.rrDispersionTolerance, c.rrDispersionTolerance)
+        XCTAssertEqual(PPGConstants.sparsePeriodSamples, c.sparsePeriodSamples)
     }
 
     // MARK: - Stages
@@ -136,6 +140,14 @@ final class VectorTests: XCTestCase {
             } else {
                 XCTAssertNil(got, "expected nil RMSSD for \(c.peaks)")
             }
+
+            let dispersion = HRV.dispersion(peaks: c.peaks, fs: c.fs)
+            if let expected = c.dispersion {
+                XCTAssertEqual(dispersion ?? .nan, expected, accuracy: 1e-9,
+                               "dispersion \(c.peaks)")
+            } else {
+                XCTAssertNil(dispersion, "expected nil dispersion for \(c.peaks)")
+            }
         }
     }
 
@@ -158,6 +170,13 @@ final class VectorTests: XCTestCase {
             XCTAssertEqual(result.isReportable, e.isReportable, "\(c.name) reportable")
             XCTAssertEqual(result.beatCount, e.beatCount, "\(c.name) beat count")
 
+            if let expectedDispersion = e.rrDispersion {
+                XCTAssertEqual(result.rrDispersion ?? .nan, expectedDispersion,
+                               accuracy: 1e-6, "\(c.name) rr dispersion")
+            } else {
+                XCTAssertNil(result.rrDispersion, "\(c.name) dispersion should be nil")
+            }
+
             if let expectedHRV = e.rmssdMs {
                 XCTAssertEqual(result.rmssdMs ?? .nan, expectedHRV, accuracy: 1e-6, "\(c.name) rmssd")
             } else {
@@ -175,6 +194,33 @@ final class VectorTests: XCTestCase {
             }
             XCTAssertLessThan(abs(bpm - c.trueBPM), 3.0,
                               "\(c.name): estimated \(bpm) for a true rate of \(c.trueBPM)")
+        }
+    }
+
+    /// A fast, highly variable pulse must not be reported with false precision.
+    ///
+    /// At 195 BPM a beat spans about nine samples at 30 fps, so sub-sample
+    /// refinement carries the estimate and interval scatter biases it low. The
+    /// dispersion penalty exists to catch exactly this, and without it these
+    /// readings pass the gate while being 10-14 BPM wrong.
+    func testFastVariableRateIsNotReported() {
+        guard let vector = Self.vectors.pipeline.first(where: { $0.name == "high_rate_variable_195" })
+        else { return XCTFail("missing high_rate_variable_195 vector") }
+
+        let result = PPGAnalyzer.analyze(timestamps: vector.timestamps, values: vector.values)
+        XCTAssertFalse(result.isReportable,
+                       "a fast, erratic pulse was reported as \(result.bpm ?? -1) BPM")
+    }
+
+    /// The penalty must not fire at ordinary heart rates, where the same
+    /// dispersion is simply normal variability spread over many samples.
+    func testDispersionPenaltyLeavesNormalRatesAlone() {
+        for name in ["nominal_72", "nominal_55", "brady_46"] {
+            guard let vector = Self.vectors.pipeline.first(where: { $0.name == name })
+            else { continue }
+            let result = PPGAnalyzer.analyze(timestamps: vector.timestamps, values: vector.values)
+            XCTAssertTrue(result.isReportable,
+                          "\(name) was rejected; the penalty is firing at normal rates")
         }
     }
 

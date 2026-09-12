@@ -60,13 +60,17 @@ struct DoctorReportView: View {
 /// Wraps the PDF so `ShareLink` exports a real file with a sensible name.
 struct ReportDocument: Transferable {
     let data: Data
+    let filename: String
+
+    init(data: Data, date: Date = Date()) {
+        self.data = data
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        self.filename = "PulseLog-\(formatter.string(from: date)).pdf"
+    }
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .pdf) { $0.data }
-            .suggestedFileName {  _ in
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyy-MM-dd"
-                return "PulseLog-\(formatter.string(from: Date())).pdf"
-            }
+            .suggestedFileName("PulseLog summary.pdf")
     }
 }
