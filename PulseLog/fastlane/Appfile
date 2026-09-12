@@ -1,0 +1,6 @@
+# Values come from environment variables so nothing account-specific is
+# committed. Set these locally in a .env file (gitignored) or as CI secrets.
+app_identifier ENV["PULSELOG_BUNDLE_ID"] || "com.pulselog.app"
+apple_id       ENV["PULSELOG_APPLE_ID"]
+team_id        ENV["PULSELOG_TEAM_ID"]
+itc_team_id    ENV["PULSELOG_ITC_TEAM_ID"]

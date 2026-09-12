@@ -1,0 +1,82 @@
+name: PulseLog TestFlight
+
+# Runs on a macOS runner because Xcode, the iOS SDK and code signing are
+# macOS-only. Manual dispatch by default: an upload consumes a build number
+# and notifies testers, which should be a decision rather than a side effect
+# of pushing.
+on:
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: "What testers should know about this build"
+        required: false
+        default: ""
+  push:
+    paths:
+      - "PulseLog/**"
+    branches:
+      - "never-auto-upload"   # placeholder: no branch matches, by design
+
+defaults:
+  run:
+    working-directory: PulseLog
+
+jobs:
+  test:
+    name: Library tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      - name: Run signal and core test suites
+        # These do not need a simulator or signing, so they run on every
+        # dispatch and fail fast before any of the slow signing work.
+        run: swift test
+
+  testflight:
+    name: Build and upload
+    needs: test
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: PulseLog
+
+      - name: Build and upload to TestFlight
+        env:
+          # App Store Connect API key. ASC_KEY_CONTENT is the .p8 file,
+          # base64-encoded: base64 -i AuthKey_XXXX.p8 | pbcopy
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          # Signing certificates and profiles, via fastlane match.
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          PULSELOG_BUNDLE_ID: ${{ vars.PULSELOG_BUNDLE_ID }}
+          PULSELOG_TEAM_ID: ${{ secrets.PULSELOG_TEAM_ID }}
+          PULSELOG_ITC_TEAM_ID: ${{ secrets.PULSELOG_ITC_TEAM_ID }}
+          PULSELOG_APPLE_ID: ${{ secrets.PULSELOG_APPLE_ID }}
+        run: bundle exec fastlane beta changelog:"${{ inputs.changelog }}" skip_tests:true
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ~/Library/Logs/gym
+            PulseLog/fastlane/report.xml
+          if-no-files-found: ignore

@@ -32,6 +32,13 @@ targets:
     platform: iOS
     sources:
       - path: App
+        excludes:
+          # Generated into place by the `info:` block below; including it as a
+          # source would also copy it into the bundle as a stray resource.
+          - "Resources/Info.plist"
+          # Local StoreKit testing only. Shipping it would put placeholder
+          # pricing inside the released app.
+          - "Resources/PulseLog.storekit"
     dependencies:
       - package: PulseLogPackage
         product: PulseLogSignal

@@ -1,0 +1,82 @@
+# Build and ship PulseLog to TestFlight.
+#
+#   bundle exec fastlane beta
+#
+# Authentication uses an App Store Connect API key rather than an Apple ID and
+# password: it is not tied to a person, needs no two-factor prompt, and can be
+# revoked on its own. See TESTFLIGHT.md for how to create one.
+
+default_platform(:ios)
+
+XCODEPROJ = "PulseLog.xcodeproj"
+SCHEME = "PulseLog"
+
+platform :ios do
+
+  before_all do
+    # The project file is generated, not committed, so regenerate it before
+    # anything reads it.
+    sh("command -v xcodegen >/dev/null || brew install xcodegen")
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "Run the library test suites"
+  lane :test do
+    # These cover the signal pipeline and domain logic -- the parts where a
+    # defect is silent rather than visible. Worth failing the build on.
+    spm(command: "test")
+  end
+
+  desc "Build and upload a build to TestFlight"
+  lane :beta do |options|
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_KEY_CONTENT"),
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    test unless options[:skip_tests]
+
+    setup_ci if ENV["CI"]
+
+    # Build numbers must increase monotonically per version. Deriving it from
+    # the latest build already on TestFlight avoids the "build number already
+    # exists" rejection that otherwise happens after any local upload.
+    increment_build_number(
+      xcodeproj: XCODEPROJ,
+      build_number: latest_testflight_build_number(api_key: api_key) + 1
+    )
+
+    sync_code_signing(
+      type: "appstore",
+      readonly: ENV["CI"] ? true : false,
+      api_key: api_key
+    ) if ENV["MATCH_GIT_URL"]
+
+    build_app(
+      scheme: SCHEME,
+      project: XCODEPROJ,
+      configuration: "Release",
+      export_method: "app-store",
+      # Camera PPG needs real hardware, so there is no simulator slice to keep.
+      destination: "generic/platform=iOS"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      # Internal testers only by default. External distribution triggers Beta
+      # App Review, and should not happen until the estimator has been
+      # validated against a reference device -- see TESTFLIGHT.md.
+      distribute_external: false,
+      notify_external_testers: false,
+      skip_waiting_for_build_processing: false,
+      changelog: options[:changelog] || default_changelog
+    )
+  end
+
+  def default_changelog
+    sh("git log -1 --pretty=%s", log: false).strip
+  end
+end
