@@ -8,8 +8,9 @@ import SwiftUI
 /// pressure with a phone camera, so this screen records what a real cuff
 /// reported and never pretends to produce it.
 struct BloodPressureEntryView: View {
-    @Environment(\.modelContext) private var context
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var health: HealthKitBridge
 
     @State private var systolic = 120
     @State private var diastolic = 80
@@ -112,8 +113,12 @@ struct BloodPressureEntryView: View {
             date: date, systolic: systolic, diastolic: diastolic, pulse: pulse, tag: tag,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note
         )
-        context.insert(record)
-        try? context.save()
+        modelContext.insert(record)
+        try? modelContext.save()
+
+        let value = record.value
+        Task { await health.save(value) }
+
         if category.requiresUrgentAttention { Haptics.warning() } else { Haptics.success() }
         dismiss()
     }

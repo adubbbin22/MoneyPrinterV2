@@ -7,8 +7,9 @@ struct SaveReadingSheet: View {
     let reading: PendingReading
     var onSaved: () -> Void
 
-    @Environment(\.modelContext) private var context
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var health: HealthKitBridge
     @State private var tag: ContextTag = .resting
     @State private var note: String = ""
 
@@ -89,8 +90,15 @@ struct SaveReadingSheet: View {
             confidence: reading.confidence, tag: tag,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note
         )
-        context.insert(record)
-        try? context.save()
+        modelContext.insert(record)
+        try? modelContext.save()
+
+        // Mirror into Health so PulseLog is one more source rather than a silo.
+        // Fire-and-forget: a HealthKit failure must not cost the user the
+        // reading they just spent thirty seconds taking.
+        let value = record.value
+        Task { await health.save(value) }
+
         dismiss()
         onSaved()
     }

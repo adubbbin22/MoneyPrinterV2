@@ -22,6 +22,7 @@ final class MeasurementViewModel: ObservableObject {
     @Published private(set) var beatTick: Int = 0
 
     private let camera = CameraController()
+    private let health: HealthKitBridge
     private var session = MeasurementSession()
     private var facts: [String] = []
     private var factIndex = 0
@@ -31,6 +32,10 @@ final class MeasurementViewModel: ObservableObject {
     /// How long a fact stays on screen. Long enough to read a sentence
     /// without feeling like a slideshow.
     private let factInterval: TimeInterval = 6.0
+
+    init(health: HealthKitBridge) {
+        self.health = health
+    }
 
     // MARK: - Lifecycle
 
@@ -42,6 +47,7 @@ final class MeasurementViewModel: ObservableObject {
         lastFactChange = Date()
         session.reset()
 
+        Haptics.prepare()
         camera.onSample = { [weak self] sample in
             self?.handle(sample)
         }
@@ -108,6 +114,9 @@ final class MeasurementViewModel: ObservableObject {
         guard Date().timeIntervalSince(lastBeatAt) >= interval else { return }
         lastBeatAt = Date()
         beatTick &+= 1
+        // Fired from the same detected beat that drives the animation, so the
+        // tap the user feels is the pulse actually being measured.
+        Haptics.beat()
     }
 
     private func advanceFactIfNeeded() {

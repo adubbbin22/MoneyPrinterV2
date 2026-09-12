@@ -1,0 +1,59 @@
+{
+  "identifier" : "PULSELOG_LOCAL",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "PulseLogLocal",
+    "_askToBuyEnabled" : false
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "pulselog_plus",
+      "localizations" : [],
+      "name" : "PulseLog Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "displayPrice" : "3.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Full history, trends and the doctor report",
+              "displayName" : "Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.pulselog.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "PulseLog Plus Monthly",
+          "subscriptionGroupID" : "pulselog_plus",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "displayPrice" : "19.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "annual",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Full history, trends and the doctor report",
+              "displayName" : "Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.pulselog.plus.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "PulseLog Plus Annual",
+          "subscriptionGroupID" : "pulselog_plus",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : { "major" : 3, "minor" : 0 }
+}

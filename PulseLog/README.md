@@ -60,19 +60,22 @@ cd PulseLog
 swift test
 ```
 
-The app target needs an Xcode project referencing `App/` and both library
-targets. It requires a physical device — camera PPG cannot work in the
-simulator, which has no camera or torch.
+The app target is generated from `project.yml`, so the build configuration
+stays reviewable in a diff rather than living in an opaque `pbxproj`:
 
-Required `Info.plist` keys:
+```bash
+brew install xcodegen
+xcodegen generate
+open PulseLog.xcodeproj
+```
 
-| key | reason |
-|---|---|
-| `NSCameraUsageDescription` | pulse measurement |
-| `NSHealthShareUsageDescription` | reads sleep and steps to explain trends |
-| `NSHealthUpdateUsageDescription` | writes readings back to Health |
+It requires a physical device — camera PPG cannot work in the simulator, which
+has no camera or torch. Usage strings, entitlements and the privacy manifest
+are in `App/Resources/`.
 
-Entitlements: HealthKit, and iCloud/CloudKit if sync is enabled.
+Before building, see **[TESTFLIGHT.md](TESTFLIGHT.md)** for what is still
+missing: an app icon, signing, and the StoreKit products all block a
+distributable build.
 
 ## Accuracy
 

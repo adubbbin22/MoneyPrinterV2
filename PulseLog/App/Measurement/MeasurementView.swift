@@ -3,8 +3,13 @@ import PulseLogSignal
 import SwiftUI
 
 struct MeasurementView: View {
-    @StateObject private var model = MeasurementViewModel()
+    @EnvironmentObject private var health: HealthKitBridge
+    @StateObject private var model: MeasurementViewModel
     @Environment(\.dismiss) private var dismiss
+
+    init(health: HealthKitBridge) {
+        _model = StateObject(wrappedValue: MeasurementViewModel(health: health))
+    }
     @State private var pendingResult: PendingReading?
 
     var body: some View {

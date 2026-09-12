@@ -5,6 +5,8 @@ import SwiftUI
 struct HomeView: View {
     var onFirstMeasurementSaved: () -> Void
 
+    @EnvironmentObject private var health: HealthKitBridge
+
     @Query(sort: \StoredHeartRateReading.date, order: .reverse)
     private var heartRates: [StoredHeartRateReading]
     @Query(sort: \StoredBloodPressureReading.date, order: .reverse)
@@ -51,7 +53,7 @@ struct HomeView: View {
             }
             .background(Theme.pageBackground)
             .navigationTitle("PulseLog")
-            .navigationDestination(isPresented: $showingMeasure) { MeasurementView() }
+            .navigationDestination(isPresented: $showingMeasure) { MeasurementView(health: health) }
             .sheet(isPresented: $showingBloodPressure) { BloodPressureEntryView() }
             .onAppear { countAtAppear = heartRates.count }
             .onChange(of: heartRates.count) { previous, current in

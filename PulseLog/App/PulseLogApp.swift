@@ -5,6 +5,7 @@ import SwiftUI
 struct PulseLogApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @StateObject private var subscriptions = SubscriptionStore()
+    @StateObject private var health = HealthKitBridge()
     @State private var container: ModelContainer?
 
     var body: some Scene {
@@ -16,6 +17,7 @@ struct PulseLogApp: App {
                     RootView()
                         .modelContainer(container)
                         .environmentObject(subscriptions)
+                        .environmentObject(health)
                 } else {
                     ProgressView()
                 }
@@ -56,6 +58,9 @@ struct RootView: View {
 
             TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.xyaxis.line") }
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(Theme.accent)
         .sheet(isPresented: $showingPaywall) { PaywallView() }

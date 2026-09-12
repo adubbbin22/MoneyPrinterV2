@@ -18,8 +18,13 @@ struct TrendsView: View {
 
     @Query(sort: \StoredHeartRateReading.date) private var heartRates: [StoredHeartRateReading]
     @Query(sort: \StoredBloodPressureReading.date) private var bloodPressures: [StoredBloodPressureReading]
+    @EnvironmentObject private var health: HealthKitBridge
     @State private var range: Range = .month
     @State private var showingReport = false
+    /// Daily sleep and step counts, loaded from HealthKit. Without these the
+    /// sleep and activity insights can never fire, which is most of the point
+    /// of the section.
+    @State private var dailyContext: [DailyContext] = []
 
     private var cutoff: Date {
         Calendar.current.date(byAdding: .day, value: -range.days, to: Date()) ?? .distantPast
@@ -36,7 +41,7 @@ struct TrendsView: View {
     private var insights: [Insight] {
         CorrelationEngine.insights(heartRates: heartRates.map(\.value),
                                    bloodPressures: bloodPressures.map(\.value),
-                                   context: [])   // supplied by HealthKit at runtime
+                                   context: dailyContext)
     }
 
     var body: some View {
@@ -67,6 +72,10 @@ struct TrendsView: View {
                     Label("Doctor report", systemImage: "square.and.arrow.up")
                 }
                 .disabled(hrValues.isEmpty && bpValues.isEmpty)
+            }
+            .task {
+                // A year covers the longest range the UI offers.
+                dailyContext = await health.dailyContext(days: 365)
             }
             .sheet(isPresented: $showingReport) {
                 DoctorReportView(heartRates: hrValues, bloodPressures: bpValues,
